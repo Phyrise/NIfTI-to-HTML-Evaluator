@@ -12,25 +12,24 @@ from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Generate a Client-Side PACS HTML Viewer for BraTS Models.")
-    parser.add_argument("--base_dir", type=str, required=True, help="Root directory containing all modality subfolders.")
+    parser = argparse.ArgumentParser(description="NIfTI-to-HTML: Zero-backend medical image evaluation and PACS-style viewer.")
+    parser.add_argument("--base_dir", type=str, required=True, help="Root directory containing modality subfolders.")
     parser.add_argument("--ref", type=str, default="t1c", help="Name of the reference subfolder (Ground Truth).")
     parser.add_argument("--seg", type=str, default="seg", help="Name of the segmentation subfolder.")
     parser.add_argument("--bg", type=str, nargs='*', default=["t1n", "t2f", "t2w"], help="Names of background modality subfolders.")
     parser.add_argument("--fake", type=str, nargs='+', required=True, help="Names of synthetic model subfolders.")
     parser.add_argument("--out_dir", type=str, default="pacs_demo", help="Output directory for the HTML viewer and PNG slices.")
     parser.add_argument("--num_slices", type=int, default=10, help="Number of context-aware slices to extract per patient.")
+    parser.add_argument("--cols", type=int, default=3, help="Force the number of columns in the viewer grid.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible blind A/B shuffling.")
     parser.add_argument("--workers", type=int, default=8, help="Number of CPU workers for parallel processing.")
     return parser.parse_args()
 
 def find_file(directory, p_id):
-    """Smart globbing to handle BraTS suffixes (e.g. -t1c.nii.gz, -seg.nii.gz)"""
     matches = glob(os.path.join(directory, f"{p_id}*.nii.gz"))
     return matches[0] if matches else None
 
 def get_clever_slices(ref_path, seg_path, requested_slices):
-    """Context-Aware Slicing Engine."""
     ref_arr = sitk.GetArrayFromImage(sitk.ReadImage(ref_path))
     brain_coords = np.argwhere(ref_arr > 0)
     if brain_coords.size == 0: return None, None
@@ -102,7 +101,7 @@ def process_single_patient(args):
         print(f"Error on {p_id}: {e}")
         return None
 
-def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names):
+def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, cols):
     metadata_json = json.dumps(patient_metadata)
     
     bg_html = "".join([f'<div class="pacs-cell"><div class="cell-title">Real {bg_names[i]}</div><div class="img-wrapper"><img class="base-img" id="img-bg_{i}"></div></div>' for i in range(bg_count)])
@@ -121,7 +120,7 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names):
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Client-Side PACS Viewer</title>
+        <title>NIfTI-to-HTML Evaluator</title>
         <style>
             :root {{ --bg-main: #0a0a0c; --bg-panel: #141417; --bg-hover: #1f1f24; --border-color: #2a2a30; --accent-blue: #007acc; --accent-red: #c62828; --text-main: #e0e0e0; --text-muted: #888; }}
             body {{ display: flex; height: 100vh; margin: 0; font-family: -apple-system, sans-serif; background: var(--bg-main); color: var(--text-main); overflow: hidden; user-select: none; }}
@@ -158,13 +157,14 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names):
             .rate-btn.selected {{ background: var(--accent-blue); color: #fff; border-color: #66b2ff; transform: scale(1.1); }}
 
             #viewer-container {{ flex: 1; padding: 20px; background: var(--bg-main); display: flex; flex-direction: column; align-items: center; justify-content: center; }}
-            .pacs-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; width: 100%; max-width: 1200px; }}
+            
+            /* DYNAMIC CSS GRID FIX */
+            .pacs-grid {{ display: grid; grid-template-columns: repeat({cols}, 1fr); gap: 15px; width: 100%; max-width: 1200px; margin: 0 auto; }}
+            
             .pacs-cell {{ background: #000; border: 1px solid #333; position: relative; border-radius: 4px; }}
             .cell-title {{ text-align: center; padding: 6px; font-weight: bold; font-size: 13px; background: #111; color: #ccc; border-bottom: 1px solid #333; }}
             .img-wrapper {{ position: relative; width: 100%; aspect-ratio: 1; }}
             .base-img, .overlay-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; }}
-            
-            /* Default to showing the full Synthetic image (opacity 1) */
             .overlay-img {{ opacity: 1; transition: opacity 0.1s; }}
             
             #shortcuts-legend {{ position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 50; }}
@@ -201,7 +201,7 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names):
                         <div class="slider-group">
                             <span>Overlay:</span>
                             <span style="color:#fff;">Real</span>
-                            <input type="range" id="opacity-slider" min="0" max="1" step="0.1" value="1" oninput="updateOpacity(this.value)">
+                            <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="1" oninput="updateOpacity(this.value)">
                             <span style="color:#fff;">Syn</span>
                         </div>
                     </div>
@@ -338,7 +338,7 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names):
                 if (e.shiftKey || e.ctrlKey || e.metaKey) {{
                     let currOpacity = Number(opacitySlider.value);
                     let wheelDelta = (Math.abs(e.deltaY) > Math.abs(e.deltaX)) ? e.deltaY : e.deltaX;
-                    let newOpacity = Math.max(0, Math.min(1, currOpacity + ((wheelDelta < 0) ? 0.1 : -0.1)));
+                    let newOpacity = Math.max(0, Math.min(1, currOpacity + ((wheelDelta < 0) ? 0.05 : -0.05)));
                     opacitySlider.value = newOpacity.toFixed(2);
                     updateOpacity(newOpacity);
                 }} else {{
@@ -425,7 +425,6 @@ def main():
     os.makedirs(os.path.join(args.out_dir, "slices"), exist_ok=True)
     random.seed(args.seed)
 
-    # Resolve full paths using the base directory
     ref_dir = os.path.join(args.base_dir, args.ref)
     seg_dir = os.path.join(args.base_dir, args.seg)
     bg_dirs = [os.path.join(args.base_dir, d) for d in args.bg]
@@ -483,7 +482,8 @@ def main():
 
     print("Building HTML Viewer...")
     out_html = os.path.join(args.out_dir, "index.html")
-    generate_html(patient_metadata, len(args.bg), len(args.fake), out_html, args.bg)
+    # Pass args.cols here to the generator
+    generate_html(patient_metadata, len(args.bg), len(args.fake), out_html, args.bg, args.cols)
     print(f"✅ Success! Open '{out_html}' in your browser. Decoding key saved to {key_path}")
 
 if __name__ == "__main__":
