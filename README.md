@@ -2,6 +2,8 @@
 
 A zero-backend utility converting NIfTI volumes into a responsive, standalone HTML/JS viewer. Optimized for rapid blinded evaluation of medical image synthesis / segmentation.
 
+[Live Interactive Demo on MR T1C Synthesis from BraTS dataset](https://phyrise.github.io/NIfTI-to-HTML-Evaluator/)
+
 ## **Technical Core**
 
 * **Architecture:** Generates a static HTML/CSS/JS bundle. Zero-latency rendering via client-side logic.  
