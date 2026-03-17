@@ -1,0 +1,5 @@
+# Test data and generated outputs
+brats1251_2patients_f0_val/
+pacs_demo/
+*_test_data/
+*_synthetic/
