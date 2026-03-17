@@ -159,7 +159,7 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
             #viewer-container {{ flex: 1; padding: 20px; background: var(--bg-main); display: flex; flex-direction: column; align-items: center; justify-content: center; }}
             
             /* DYNAMIC CSS GRID FIX */
-            .pacs-grid {{ display: grid; grid-template-columns: repeat({cols}, 1fr); gap: 15px; width: 100%; max-width: 1200px; margin: 0 auto; }}
+            .pacs-grid {{ display: grid; grid-template-columns: repeat({cols}, 1fr); gap: 15px; width: 100%; max-width: 1200px; margin: 0 auto; transform-origin: center center; transition: transform 0.2s ease; }}
             
             .pacs-cell {{ background: #000; border: 1px solid #333; position: relative; border-radius: 4px; }}
             .cell-title {{ text-align: center; padding: 6px; font-weight: bold; font-size: 13px; background: #111; color: #ccc; border-bottom: 1px solid #333; }}
@@ -204,6 +204,12 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
                             <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="1" oninput="updateOpacity(this.value)">
                             <span style="color:#fff;">Syn</span>
                         </div>
+                        <div class="slider-group">
+                            <button class="btn" style="padding: 4px 8px; font-size: 12px;" onclick="zoomOut()">−</button>
+                            <span id="zoom-label" style="min-width:50px; text-align:center;">100%</span>
+                            <button class="btn" style="padding: 4px 8px; font-size: 12px;" onclick="zoomIn()">+</button>
+                            <input type="range" id="zoom-slider" min="50" max="200" value="100" step="5" oninput="updateZoomFromSlider(this.value)" style="width:80px; margin-left:8px;">
+                        </div>
                     </div>
 
                     <div class="toolbar-group">
@@ -236,7 +242,8 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
             <div id="shortcuts-legend">
                 <div style="margin-bottom: 6px; font-weight:bold; color:#fff;">Viewer Shortcuts</div>
                 <div><span class="key">Wheel</span> Scroll Volume</div>
-                <div style="margin-top: 4px;"><span class="key">Ctrl</span> + <span class="key">Wheel</span> Adjust Opacity</div>
+                <div style="margin-top: 4px;"><span class="key">Ctrl</span> + <span class="key">Wheel</span> Zoom In/Out</div>
+                <div style="margin-top: 4px;"><span class="key">Shift</span> + <span class="key">Wheel</span> Adjust Opacity</div>
                 <div style="margin-top: 4px;"><span class="key">T</span> Toggle Overlay</div>
             </div>
         </div>
@@ -258,8 +265,17 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
 
             const sliceSlider = document.getElementById('slice-slider');
             const opacitySlider = document.getElementById('opacity-slider');
+            const zoomSlider = document.getElementById('zoom-slider');
+            const zoomLabel = document.getElementById('zoom-label');
             const savedData = localStorage.getItem('pacs_viewer_evaluations');
             if (savedData) try {{ evaluations = JSON.parse(savedData); }} catch(e) {{}}
+            const savedZoom = localStorage.getItem('pacs_viewer_zoom');
+            let currentZoom = savedZoom ? parseFloat(savedZoom) : 1.0;
+            if (currentZoom < 0.5) currentZoom = 0.5;
+            if (currentZoom > 2.0) currentZoom = 2.0;
+            zoomSlider.value = Math.round(currentZoom * 100);
+            updateZoomDisplay();
+            applyZoom();
 
             criteriaKeys.forEach(key => {{
                 const group = document.getElementById('grp-' + key);
@@ -335,7 +351,12 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
 
             document.getElementById('viewer-container').addEventListener('wheel', (e) => {{
                 e.preventDefault(); 
-                if (e.shiftKey || e.ctrlKey || e.metaKey) {{
+                if (e.ctrlKey) {{
+                    let currZoom = currentZoom;
+                    let wheelDelta = (Math.abs(e.deltaY) > Math.abs(e.deltaX)) ? e.deltaY : e.deltaX;
+                    let newZoom = Math.max(0.5, Math.min(2.0, currZoom + ((wheelDelta < 0) ? 0.05 : -0.05)));
+                    setZoom(newZoom);
+                }} else if (e.shiftKey) {{
                     let currOpacity = Number(opacitySlider.value);
                     let wheelDelta = (Math.abs(e.deltaY) > Math.abs(e.deltaX)) ? e.deltaY : e.deltaX;
                     let newOpacity = Math.max(0, Math.min(1, currOpacity + ((wheelDelta < 0) ? 0.05 : -0.05)));
@@ -348,7 +369,7 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
                 }}
             }}, {{ passive: false }});
 
-            document.addEventListener('keydown', (e) => {{
+           document.addEventListener('keydown', (e) => {{
                 if (e.key.toLowerCase() === 't') {{
                     let curr = Number(opacitySlider.value);
                     let newOp = curr > 0.5 ? 0 : 1;
@@ -359,6 +380,44 @@ def generate_html(patient_metadata, bg_count, fake_count, out_html, bg_names, co
 
             function updateOpacity(val) {{
                 for(let i=0; i<fakeCount; i++) document.getElementById(`img-syn-fake_${{i}}`).style.opacity = val;
+            }}
+
+            function updateZoomDisplay() {{
+                const percent = Math.round(currentZoom * 100);
+                zoomLabel.innerText = `${{percent}}%`;
+                zoomSlider.value = percent;
+            }}
+
+            function applyZoom() {{
+                const grid = document.querySelector('.pacs-grid');
+                if (grid) {{
+                    grid.style.transform = `scale(${{currentZoom.toFixed(2)}})`;
+                }}
+            }}
+
+            function setZoom(factor) {{
+                if (factor < 0.5) factor = 0.5;
+                if (factor > 2.0) factor = 2.0;
+                currentZoom = factor;
+                localStorage.setItem('pacs_viewer_zoom', currentZoom.toString());
+                updateZoomDisplay();
+                applyZoom();
+            }}
+
+            function zoomIn() {{
+                setZoom(currentZoom + 0.1);
+            }}
+
+            function zoomOut() {{
+                setZoom(currentZoom - 0.1);
+            }}
+
+            function resetZoom() {{
+                setZoom(1.0);
+            }}
+
+            function updateZoomFromSlider(value) {{
+                setZoom(value / 100);
             }}
 
             function navigatePatient(dir) {{ loadPatient(currentIndex + dir); }}
