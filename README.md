@@ -7,13 +7,13 @@ A zero-backend utility converting NIfTI volumes into a responsive, standalone HT
 ## Controls & UI
 
 - **Axial Navigation:** Mouse wheel to move through slices
-- **Zoom:** Double-click to zoom in/out, or use Ctrl+Wheel for smooth zooming
-- **Comparison Mode:** 
-  - Ctrl+Wheel: Adjust opacity between reference and synthetic images
-  - T key: Toggle full overlay (0/100%)
-- **Rating:** 1-5 star buttons to score image quality
+- **Zoom:** Ctrl + Wheel to zoom in/out (50% - 200%)
+- **Opacity Adjustment:** Shift + Wheel to adjust synthetic overlay opacity
+- **Toggle Overlay:** T key to flip between full reference and full synthetic
+- **Rating:** 1-5 buttons to score image quality and clinical value
 - **Auto-Advance:** Optional auto-advance to next patient after rating
 - **Data Management:** Export/Import CSV files for transferring evaluation data
+- **Zoom Controls:** Use +/- buttons or slider in toolbar
 
 ## Installation and Usage
 
